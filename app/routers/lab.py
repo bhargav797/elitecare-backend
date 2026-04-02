@@ -284,6 +284,11 @@ def mark_lab_report_reviewed(
             if all_done:
                 appointment.status = "completed"
                 print(f">>> AUTO-COMPLETING APPOINTMENT {appointment.id} after lab review <<<")
+                try:
+                    from app.utils.auto_billing import auto_generate_appointment_bill
+                    auto_generate_appointment_bill(db, appointment.id, current_user.id)
+                except Exception as e:
+                    print(f"Auto-billing failed: {e}")
 
     db.commit()
 

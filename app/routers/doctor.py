@@ -398,6 +398,11 @@ def skip_lab_request(
     if has_prescription:
         # If prescription is done and we skip lab, we are done
         app.status = "completed"
+        try:
+            from app.utils.auto_billing import auto_generate_appointment_bill
+            auto_generate_appointment_bill(db, app.id, current_user.id)
+        except Exception as e:
+            logging.error(f"Auto-billing failed: {e}")
     else:
         # Still waiting for prescription
         app.status = "in_progress"
@@ -469,6 +474,11 @@ def skip_prescription(
     # If lab is NOT required, then we are done -> completed
     if not app.is_lab_required:
         app.status = "completed"
+        try:
+            from app.utils.auto_billing import auto_generate_appointment_bill
+            auto_generate_appointment_bill(db, app.id, current_user.id)
+        except Exception as e:
+            logging.error(f"Auto-billing failed: {e}")
     else:
         app.status = "in_progress"
     
@@ -512,6 +522,11 @@ def create_prescription(
     
     if not appointment.is_lab_required:
         appointment.status = "completed"
+        try:
+            from app.utils.auto_billing import auto_generate_appointment_bill
+            auto_generate_appointment_bill(db, appointment.id, current_user.id)
+        except Exception as e:
+            logging.error(f"Auto-billing failed: {e}")
     else:
         appointment.status = "in_progress"
         
