@@ -1,0 +1,9 @@
+from .auth import router as auth_router
+from .admin import router as admin_router
+from .doctor import router as doctor_router
+from .reception import router as reception_router
+from .lab import router as lab_router
+from .pharmacy import router as pharmacy_router
+from .patient import router as patient_router
+from .patient_public import router as patient_public_router
+from .lab_reports import router as lab_reports_router

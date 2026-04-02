@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+sqlalchemy
+bcrypt
+python-jose
+python-dotenv
+python-multipart
+reportlab
+psycopg2-binary
+cloudinary
