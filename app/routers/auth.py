@@ -5,8 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi import Depends
 from app.dependencies.auth import get_current_user
 from app.database import get_db
-from app.schemas.auth import LoginSchema, RegisterSchema
+from app.schemas.auth import (
+    LoginSchema, RegisterSchema, ResetPasswordSendOTP, 
+    ResetPasswordVerify, ChangePasswordOTPVerify
+)
 from app.models.user import User
+from app.models.otp import EmailOTP
+from app.utils.email import send_otp_email
+import random
+from datetime import datetime, timedelta
 from app.core.security import (
     create_access_token,
     verify_password,
@@ -102,6 +109,90 @@ def change_password(
     db.commit()
 
     return {"message": "Password updated successfully"}
+
+@router.post("/reset-password/send-otp")
+def reset_password_send_otp(data: ResetPasswordSendOTP, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        # Prevent user enumeration, just return pseudo-success
+        return {"message": "If that email is valid, an OTP has been sent."}
+
+    otp = str(random.randint(100000, 999999))
+    db_otp = db.query(EmailOTP).filter(EmailOTP.email == data.email).first()
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    
+    if db_otp:
+        db_otp.otp = otp
+        db_otp.expires_at = expires_at
+    else:
+        db_otp = EmailOTP(email=data.email, otp=otp, expires_at=expires_at)
+        db.add(db_otp)
+        
+    db.commit()
+
+    if send_otp_email(data.email, otp):
+        return {"message": "If that email is valid, an OTP has been sent."}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send OTP email")
+
+
+@router.put("/reset-password/verify-and-change")
+def reset_password_verify_change(data: ResetPasswordVerify, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request")
+
+    db_otp = db.query(EmailOTP).filter(EmailOTP.email == data.email).first()
+    if not db_otp or db_otp.otp != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+        
+    if db_otp.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="OTP has expired")
+        
+    user.hashed_password = hash_password(data.new_password)
+    db.delete(db_otp) # delete OTP after use
+    db.commit()
+
+    return {"message": "Password reset successfully!"}
+
+
+@router.post("/change-password/send-otp")
+def change_password_send_otp(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    otp = str(random.randint(100000, 999999))
+    db_otp = db.query(EmailOTP).filter(EmailOTP.email == current_user.email).first()
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    
+    if db_otp:
+        db_otp.otp = otp
+        db_otp.expires_at = expires_at
+    else:
+        db_otp = EmailOTP(email=current_user.email, otp=otp, expires_at=expires_at)
+        db.add(db_otp)
+        
+    db.commit()
+
+    if send_otp_email(current_user.email, otp):
+        return {"message": "OTP sent successfully to your email"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send OTP email")
+
+
+@router.put("/change-password/verify-and-change")
+def change_password_verify_change(data: ChangePasswordOTPVerify, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db_otp = db.query(EmailOTP).filter(EmailOTP.email == current_user.email).first()
+    if not db_otp or db_otp.otp != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+        
+    if db_otp.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="OTP has expired")
+        
+    # Re-fetch user
+    user = db.query(User).filter(User.id == current_user.id).first()
+    user.hashed_password = hash_password(data.new_password)
+    db.delete(db_otp) # delete OTP after use
+    db.commit()
+
+    return {"message": "Password updated successfully!"}
 
 @router.get("/me")
 def get_me(user = Depends(get_current_user)):
